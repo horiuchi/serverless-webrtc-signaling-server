@@ -35,7 +35,7 @@ func ondisconnectHandler(api common.ApiGatewayManagementAPI, db common.DB, conne
 	for _, c := range room.Clients {
 		if c.ConnectionID != connectionID {
 			// connection might be closed, in that case just ignore error
-			api.PostToConnection(c.ConnectionID, `{"type":"close"}`)
+			api.PostToConnection(c.ConnectionID, `{"type":"bye"}`)
 		}
 	}
 	room.Clients = remove(room.Clients, connectionID)

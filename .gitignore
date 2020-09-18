@@ -1,3 +1,4 @@
+.vscode/
 .aws-sam/
 bin/
 packaged.yaml

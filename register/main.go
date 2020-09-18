@@ -15,9 +15,11 @@ import (
 
 type RegisterCommand struct {
 	Type     string `json:"type"`
-	RoomID   string `json:"room_id"`
-	ClientID string `json:"client_id"`
+	RoomID   string `json:"roomId"`
+	ClientID string `json:"clientId"`
 }
+
+var db = common.NewDB(session.New(), aws.NewConfig())
 
 func registerHandler(api common.ApiGatewayManagementAPI, db common.DB, connectionID, body string, now time.Time) error {
 	cmd := RegisterCommand{}
@@ -39,12 +41,16 @@ func registerHandler(api common.ApiGatewayManagementAPI, db common.DB, connectio
 		}
 	}
 
-	conn := common.Connection{ConnectionID: connectionID, RoomID: room.RoomID}
-	result := "accept"
+	resultType := "accept"
+	isExistClient := false
+	if len(room.Clients) == 1 {
+		isExistClient = true
+	}
 
 	if len(room.Clients) < 2 {
 		client := common.Client{ConnectionID: connectionID, ClientID: cmd.ClientID, Joined: now}
 		room.Clients = append(room.Clients, client)
+		conn := common.Connection{ConnectionID: connectionID, RoomID: room.RoomID}
 		err := db.TxPut(
 			common.TableItem{Table: roomsTable, Item: room},
 			common.TableItem{Table: connectionsTable, Item: conn},
@@ -53,10 +59,20 @@ func registerHandler(api common.ApiGatewayManagementAPI, db common.DB, connectio
 			return err
 		}
 	} else {
-		result = "reject"
+		resultType = "reject"
 	}
 
-	return api.PostToConnection(connectionID, fmt.Sprintf("{\"type\": \"%s\"}", result))
+	result := map[string]interface{}{
+		"type":          resultType,
+		"isExistClient": isExistClient,
+		"isExistUser":   isExistClient,
+	}
+	bytes, err := json.Marshal(result)
+	if err != nil {
+		return err
+	}
+
+	return api.PostToConnection(connectionID, string(bytes))
 }
 
 func handler(request events.APIGatewayWebsocketProxyRequest) (events.APIGatewayProxyResponse, error) {
@@ -68,7 +84,6 @@ func handler(request events.APIGatewayWebsocketProxyRequest) (events.APIGatewayP
 		return common.ErrorResponse(err, 500)
 	}
 
-	db := common.NewDB(session.New(), aws.NewConfig())
 	err = registerHandler(api, db, ctx.ConnectionID, request.Body, time.Now().UTC())
 	if err != nil {
 		return common.ErrorResponse(err, 500)
